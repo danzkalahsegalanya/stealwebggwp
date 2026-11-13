@@ -1,54 +1,194 @@
- "use client";
-import { FormEvent, useState } from "react";
+
+"use client";
+
+import { useState } from "react";
 
 export default function Home() {
-  const [url, setUrl] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [url, setUrl] = useState(
+    "https://auto-reaction.zxcoderid.web.id"
+  );
+  const [logs, setLogs] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
   const [status, setStatus] = useState("");
-  async function submit(e: FormEvent) {
-    e.preventDefault(); setError(""); setStatus(""); setBusy(true);
+
+  async function testConnection() {
+    setLoading(true);
+    setShowLogs(true);
+    setLogs(["Memulai pemeriksaan..."]);
+    setStatus("");
+
+    try {
+      const response = await fetch("/api/diagnostic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+
+      const data = await response.json();
+
+      setLogs(data.logs || ["Tidak ada log yang diterima."]);
+      setStatus(
+        data.targetStatus
+          ? `HTTP ${data.targetStatus}`
+          : data.success
+            ? "Berhasil"
+            : "Gagal"
+      );
+    } catch (error) {
+      setLogs([
+        `Gagal menghubungi API SiteFetch: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      ]);
+      setStatus("API ERROR");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function downloadWebsite() {
+    setLoading(true);
+    setShowLogs(true);
+    setLogs(["Memulai download website..."]);
+
     try {
       const response = await fetch("/api/download", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
       });
+
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || "Gagal mengambil website.");
+        const data = await response.json();
+        setLogs(
+          data.logs || [
+            `HTTP ${response.status}`,
+            data.error || "Download gagal.",
+            data.hint || "",
+          ].filter(Boolean)
+        );
+        setStatus(`DOWNLOAD ERROR ${response.status}`);
+        return;
       }
+
       const blob = await response.blob();
-      const disposition = response.headers.get("Content-Disposition") || "";
-      const match = disposition.match(/filename="([^"]+)"/);
-      const filename = match?.[1] || "website-archive.zip";
       const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a"); a.href = objectUrl; a.download = filename;
-      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(objectUrl);
-      setStatus("Arsip berhasil dibuat dan unduhan dimulai.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
-    } finally { setBusy(false); }
+      const link = document.createElement("a");
+
+      link.href = objectUrl;
+      link.download = "sitefetch-export.zip";
+      link.click();
+
+      URL.revokeObjectURL(objectUrl);
+
+      setLogs([
+        "Download berhasil.",
+        `Ukuran ZIP: ${blob.size} byte`,
+      ]);
+      setStatus("DOWNLOAD BERHASIL");
+    } catch (error) {
+      setLogs([
+        error instanceof Error ? error.message : String(error),
+      ]);
+      setStatus("DOWNLOAD ERROR");
+    } finally {
+      setLoading(false);
+    }
   }
-  return <main className="shell">
-    <nav className="nav"><div className="brand"><span className="brandIcon">S</span> sitefetch<span className="dot">.</span></div><span className="navTag">WEB ARCHIVER</span></nav>
-    <section className="hero">
-      <div className="eyebrow"><span className="pulse"/> SIMPLE WEBSITE ARCHIVER</div>
-      <h1>Ambil website.<br/><em>Simpan jadi file.</em></h1>
-      <p className="lead">Masukkan domain, lalu unduh arsip ZIP berisi HTML halaman utama dan aset publik satu domain yang terhubung.</p>
-      <form className="downloadForm" onSubmit={submit}>
-        <label htmlFor="url">URL WEBSITE</label>
-        <div className="inputRow"><span className="globe">↗</span><input id="url" type="url" placeholder="https://contoh.com" value={url} onChange={e=>setUrl(e.target.value)} required/><button disabled={busy}>{busy ? "Memproses…" : "Download ZIP"} <span>↓</span></button></div>
-        <div className="hint">Contoh: https://example.com</div>
-      </form>
-      {busy && <div className="notice">Sedang mengambil HTML dan aset publik. Tunggu sebentar…</div>}
-      {error && <div className="error">{error}</div>}
-      {status && <div className="success">{status}</div>}
-    </section>
-    <section className="features">
-      <article><b>01</b><h3>HTML utama</h3><p>Menyimpan halaman index dan struktur HTML yang diambil dari URL.</p></article>
-      <article><b>02</b><h3>Aset satu domain</h3><p>Mengumpulkan CSS, JavaScript, gambar, font, dan file publik yang terhubung.</p></article>
-      <article><b>03</b><h3>Arsip ZIP</h3><p>File hasilnya dikemas agar mudah disimpan dan diperiksa secara lokal.</p></article>
-    </section>
-    <footer><span>sitefetch<span className="dot">.</span></span><span>Gunakan hanya untuk website milikmu atau yang kamu punya izin untuk arsipkan.</span></footer>
-  </main>;
+
+  return (
+    <main className="min-h-screen bg-[#090d18] text-white px-5 py-16">
+      <div className="max-w-2xl mx-auto">
+        <div className="text-center mb-10">
+          <div className="text-blue-400 font-bold tracking-[0.3em] text-sm mb-3">
+            WEBSITE ARCHIVER
+          </div>
+
+          <h1 className="text-5xl font-black tracking-tight">
+            SITE<span className="text-blue-500">FETCH</span>
+          </h1>
+
+          <p className="text-gray-400 mt-4">
+            Download HTML dan aset publik website.
+          </p>
+        </div>
+
+        <section className="bg-[#111827] border border-gray-700 rounded-2xl p-6 shadow-xl">
+          <label className="block text-sm text-gray-300 mb-2">
+            Website URL
+          </label>
+
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://example.com"
+            className="w-full bg-[#090d18] border border-gray-700 rounded-xl px-4 py-4 outline-none focus:border-blue-500"
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+            <button
+              onClick={testConnection}
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-xl py-4 font-bold"
+            >
+              {loading ? "MEMERIKSA..." : "TES & LIHAT LOG"}
+            </button>
+
+            <button
+              onClick={downloadWebsite}
+              disabled={loading}
+              className="bg-gray-700 hover:bg-gray-600 disabled:opacity-50 rounded-xl py-4 font-bold"
+            >
+              DOWNLOAD ZIP
+            </button>
+          </div>
+        </section>
+
+        <section className="mt-5 bg-[#111827] border border-gray-700 rounded-2xl overflow-hidden">
+          <button
+            onClick={() => setShowLogs(!showLogs)}
+            className="w-full flex items-center justify-between p-5 text-left"
+          >
+            <span className="font-bold">
+              TERMINAL LOG
+            </span>
+
+            <span className="text-blue-400 text-sm">
+              {showLogs ? "SEMBUNYIKAN ▲" : "LIHAT LOG ▼"}
+            </span>
+          </button>
+
+          {showLogs && (
+            <div className="border-t border-gray-700 p-5">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-xs text-gray-400">
+                  STATUS: {status || "MENUNGGU"}
+                </span>
+
+                <button
+                  onClick={() =>
+                    navigator.clipboard.writeText(logs.join("\n"))
+                  }
+                  className="text-xs text-blue-400 hover:text-blue-300"
+                >
+                  COPY LOG
+                </button>
+              </div>
+
+              <pre className="bg-black rounded-xl p-4 text-green-400 text-xs leading-6 whitespace-pre-wrap break-words max-h-[450px] overflow-y-auto">
+                {logs.length
+                  ? logs.join("\n")
+                  : "Belum ada log. Jalankan tes koneksi."}
+              </pre>
+            </div>
+          )}
+        </section>
+
+        <p className="text-center text-gray-500 text-xs mt-8">
+          SiteFetch • Public website resources only
+        </p>
+      </div>
+    </main>
+  );
 }
