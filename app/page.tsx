@@ -1,130 +1,365 @@
+
 "use client";
 
 import { useState } from "react";
 
-type LogLine = { text: string; kind: "normal" | "error" | "success" | "info" };
-
 export default function Home() {
   const [url, setUrl] = useState("https://auto-reaction.zxcoderid.web.id");
-  const [logs, setLogs] = useState<LogLine[]>([{ text: "SiteFetch siap. Masukkan URL lalu jalankan tes koneksi.", kind: "info" }]);
-  const [busy, setBusy] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showLogs, setShowLogs] = useState(true);
   const [status, setStatus] = useState("READY");
 
-  function addLog(text: string, kind: LogLine["kind"] = "normal") {
-    setLogs((old) => [...old, { text: `[${new Date().toLocaleTimeString("id-ID")}] ${text}`, kind }]);
-  }
+  const colors = {
+    background: "#080d18",
+    panel: "#111a2b",
+    border: "#26354d",
+    blue: "#3985ff",
+    text: "#f3f6ff",
+    muted: "#91a0b8",
+    green: "#48dfa0",
+  };
 
-  async function diagnose() {
-    setBusy(true);
-    setStatus("CHECKING");
-    setLogs([{ text: "Memulai diagnosis dari server deployment...", kind: "info" }]);
+  async function testConnection() {
+    setLoading(true);
+    setShowLogs(true);
+    setStatus("TESTING");
+    setLogs(["[SYSTEM] Starting connection test..."]);
+
     try {
-      const res = await fetch("/api/diagnostic", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+      const response = await fetch("/api/diagnostic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
-      const data = await res.json();
-      const received: LogLine[] = (data.logs || []).map((line: string) => ({
-        text: line,
-        kind: /ERROR|403|menolak|gagal/i.test(line) ? "error" : /berhasil|: OK/i.test(line) ? "success" : "normal",
-      }));
-      setLogs(received.length ? received : [{ text: `API mengembalikan HTTP ${res.status} tanpa log.`, kind: "error" }]);
-      setStatus(data.targetStatus ? `HTTP ${data.targetStatus}` : data.success ? "SUCCESS" : "FAILED");
+
+      const data = await response.json();
+
+      setLogs(data.logs || ["No diagnostic logs returned."]);
+      setStatus(
+        data.targetStatus
+          ? `HTTP ${data.targetStatus}`
+          : data.success
+            ? "SUCCESS"
+            : "FAILED"
+      );
     } catch (error) {
-      setLogs([{ text: error instanceof Error ? error.message : "Tidak dapat menghubungi API diagnosis.", kind: "error" }]);
+      setLogs([
+        `[ERROR] ${
+          error instanceof Error ? error.message : "Connection failed"
+        }`,
+      ]);
       setStatus("API ERROR");
-    } finally { setBusy(false); }
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function download() {
-    setBusy(true);
+  async function downloadWebsite() {
+    setLoading(true);
+    setShowLogs(true);
     setStatus("DOWNLOADING");
-    setLogs([{ text: "Memulai export homepage dan aset publik...", kind: "info" }]);
+    setLogs(["[SYSTEM] Starting website export..."]);
+
     try {
-      const res = await fetch("/api/download", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+      const response = await fetch("/api/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setLogs([
-          { text: `Download gagal: HTTP ${res.status}`, kind: "error" },
-          { text: data.error || "Server tidak memberikan detail error.", kind: "error" },
-          ...(data.hint ? [{ text: data.hint, kind: "info" as const }] : []),
-        ]);
-        setStatus(`ERROR ${res.status}`);
+
+      if (!response.ok) {
+        const data = await response.json();
+
+        setLogs(
+          data.logs || [
+            `[ERROR] HTTP ${response.status}`,
+            data.error || "Download failed.",
+            data.hint || "",
+          ].filter(Boolean)
+        );
+
+        setStatus(`ERROR ${response.status}`);
         return;
       }
-      const blob = await res.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = "sitefetch-export.zip";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(objectUrl);
-      setLogs([
-        { text: "ZIP berhasil dibuat dan download dimulai.", kind: "success" },
-        { text: `Ukuran file: ${(blob.size / 1024).toFixed(1)} KB`, kind: "info" },
-        { text: "Isi: index.html, aset publik yang berhasil diambil, dan README.txt.", kind: "normal" },
-      ]);
-      setStatus("DOWNLOAD OK");
-    } catch (error) {
-      setLogs([{ text: error instanceof Error ? error.message : "Download gagal.", kind: "error" }]);
-      setStatus("DOWNLOAD ERROR");
-    } finally { setBusy(false); }
-  }
 
-  async function copyLogs() {
-    try {
-      await navigator.clipboard.writeText(logs.map((l) => l.text).join("\n"));
-      addLog("Log berhasil disalin ke clipboard.", "success");
-    } catch { addLog("Clipboard tidak tersedia. Pilih dan salin teks log secara manual.", "error"); }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = objectUrl;
+      link.download = "sitefetch-export.zip";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+
+      setLogs([
+        "[SUCCESS] Website export completed.",
+        `[INFO] ZIP size: ${blob.size} bytes`,
+      ]);
+      setStatus("DOWNLOAD SUCCESS");
+    } catch (error) {
+      setLogs([
+        `[ERROR] ${
+          error instanceof Error ? error.message : "Download failed"
+        }`,
+      ]);
+      setStatus("DOWNLOAD ERROR");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <main className="shell">
-      <header className="topbar">
-        <div className="brand"><span className="brand-mark">SF</span><span>SITEFETCH</span></div>
-        <div className="top-tag">PUBLIC WEBSITE ARCHIVER</div>
-      </header>
+    <main
+      style={{
+        minHeight: "100vh",
+        width: "100%",
+        background:
+          "radial-gradient(ellipse at 50% 0%, #172b4c 0%, #0b1220 45%, #070b13 100%)",
+        color: colors.text,
+        fontFamily: "Inter, Arial, sans-serif",
+        padding: "55px 20px",
+        boxSizing: "border-box",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "850px",
+          margin: "0 auto",
+        }}
+      >
+        <header style={{ textAlign: "center", marginBottom: "38px" }}>
+          <div
+            style={{
+              color: colors.blue,
+              fontSize: "12px",
+              fontWeight: 800,
+              letterSpacing: "5px",
+              marginBottom: "15px",
+            }}
+          >
+            WEBSITE ARCHIVER
+          </div>
 
-      <section className="hero">
-        <div className="eyebrow">WEB EXTRACTION TOOLKIT</div>
-        <h1>Site<span>Fetch.</span></h1>
-        <p>Ambil HTML dan aset publik website dalam satu arsip ZIP.<br />Diagnosis koneksi langsung dari dashboard.</p>
-      </section>
+          <h1
+            style={{
+              fontSize: "clamp(42px, 9vw, 76px)",
+              fontWeight: 900,
+              letterSpacing: "-4px",
+              margin: 0,
+              lineHeight: 1.1,
+            }}
+          >
+            SITE<span style={{ color: colors.blue }}>FETCH</span>
+          </h1>
 
-      <div className="workspace">
-        <section className="panel">
-          <div className="panel-head">
-            <div><div className="panel-title">SOURCE WEBSITE</div><div className="panel-sub">Masukkan alamat website yang ingin diarsipkan.</div></div>
-            <span className="step">01 / INPUT</span>
+          <p style={{ color: colors.muted, marginTop: "15px" }}>
+            Download HTML and publicly accessible website assets.
+          </p>
+        </header>
+
+        <section
+          style={{
+            background: colors.panel,
+            border: `1px solid ${colors.border}`,
+            borderRadius: "18px",
+            padding: "26px",
+            boxShadow: "0 20px 70px #0006",
+          }}
+        >
+          <label
+            htmlFor="website-url"
+            style={{
+              display: "block",
+              color: colors.muted,
+              fontSize: "13px",
+              fontWeight: 700,
+              marginBottom: "11px",
+            }}
+          >
+            WEBSITE URL
+          </label>
+
+          <input
+            id="website-url"
+            type="url"
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="https://example.com"
+            style={{
+              display: "block",
+              width: "100%",
+              boxSizing: "border-box",
+              background: "#080e1b",
+              color: "white",
+              border: `1px solid ${colors.border}`,
+              borderRadius: "11px",
+              padding: "17px",
+              fontSize: "15px",
+              outline: "none",
+              marginBottom: "17px",
+            }}
+          />
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+              gap: "12px",
+            }}
+          >
+            <button
+              onClick={testConnection}
+              disabled={loading || !url.trim()}
+              style={{
+                border: "none",
+                borderRadius: "11px",
+                padding: "16px",
+                background: colors.blue,
+                color: "white",
+                fontWeight: 800,
+                fontSize: "13px",
+                cursor: loading ? "wait" : "pointer",
+                opacity: loading ? 0.6 : 1,
+              }}
+            >
+              {loading ? "PLEASE WAIT..." : "TEST & VIEW LOG"}
+            </button>
+
+            <button
+              onClick={downloadWebsite}
+              disabled={loading || !url.trim()}
+              style={{
+                border: `1px solid ${colors.border}`,
+                borderRadius: "11px",
+                padding: "16px",
+                background: "#202d43",
+                color: "white",
+                fontWeight: 800,
+                fontSize: "13px",
+                cursor: loading ? "wait" : "pointer",
+                opacity: loading ? 0.6 : 1,
+              }}
+            >
+              DOWNLOAD ZIP
+            </button>
           </div>
-          <label className="field-label" htmlFor="website-url">WEBSITE URL</label>
-          <div className="url-wrap">
-            <input id="website-url" className="url-input" type="url" spellCheck={false} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" />
-          </div>
-          <div className="actions">
-            <button className="btn btn-secondary" onClick={diagnose} disabled={busy || !url.trim()}><span className="btn-icon">⌁</span>{busy ? "PLEASE WAIT..." : "TES & LIHAT LOG"}</button>
-            <button className="btn btn-primary" onClick={download} disabled={busy || !url.trim()}><span className="btn-icon">↓</span>DOWNLOAD ZIP</button>
-          </div>
-          <div className="notice"><b>Info:</b> SiteFetch mengambil homepage dan maksimal 35 aset publik dari domain yang sama. Tidak menjalankan JavaScript halaman atau melewati login, CAPTCHA, maupun firewall.</div>
         </section>
 
-        <section className="panel log-panel">
-          <div className="log-header">
-            <div className="log-heading"><span className="live-dot" />DIAGNOSTIC CONSOLE</div>
-            <span className="status">{status}</span>
+        <section
+          style={{
+            marginTop: "18px",
+            background: colors.panel,
+            border: `1px solid ${colors.border}`,
+            borderRadius: "16px",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "12px",
+              padding: "18px 21px",
+              borderBottom: showLogs
+                ? `1px solid ${colors.border}`
+                : "none",
+            }}
+          >
+            <button
+              onClick={() => setShowLogs(!showLogs)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "white",
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              TERMINAL LOG {showLogs ? "▲" : "▼"}
+            </button>
+
+            <span
+              style={{
+                fontSize: "11px",
+                fontWeight: 800,
+                color: status.includes("ERROR") || status.includes("FAILED")
+                  ? "#ff7777"
+                  : colors.green,
+              }}
+            >
+              {status}
+            </span>
           </div>
-          <div className="log-body">
-            <div className="log-toolbar"><span className="log-caption">LIVE REQUEST OUTPUT</span><button className="copy-btn" onClick={copyLogs}>COPY LOG ↗</button></div>
-            <pre className="terminal" aria-live="polite">{logs.map((line, i) => <span key={i} className={`terminal-line ${line.kind}`}>{line.text}{"\n"}</span>)}</pre>
-          </div>
+
+          {showLogs && (
+            <div style={{ padding: "18px" }}>
+              <div
+                style={{
+                  background: "#050910",
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: "11px",
+                  padding: "18px",
+                  minHeight: "150px",
+                  maxHeight: "420px",
+                  overflowY: "auto",
+                }}
+              >
+                <pre
+                  style={{
+                    color: colors.green,
+                    fontSize: "12px",
+                    lineHeight: 1.9,
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere",
+                    margin: 0,
+                    fontFamily: "Consolas, monospace",
+                  }}
+                >
+                  {logs.length
+                    ? logs.join("\n")
+                    : "Waiting for diagnostic request..."}
+                </pre>
+              </div>
+
+              <button
+                onClick={() =>
+                  navigator.clipboard.writeText(logs.join("\n"))
+                }
+                style={{
+                  marginTop: "12px",
+                  background: "transparent",
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: "8px",
+                  padding: "10px 14px",
+                  color: colors.muted,
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                COPY LOG
+              </button>
+            </div>
+          )}
         </section>
+
+        <footer
+          style={{
+            textAlign: "center",
+            color: "#62718b",
+            fontSize: "11px",
+            marginTop: "28px",
+          }}
+        >
+          SITEFETCH • PUBLIC WEBSITE RESOURCES ONLY
+        </footer>
       </div>
-      <footer className="footer"><span><strong>SITEFETCH</strong> · Website archiver</span><span>Built for publicly accessible resources</span></footer>
     </main>
   );
 }
